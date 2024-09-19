@@ -1,0 +1,198 @@
+  # 用python写了一个记事本。
+
+import tkinter as tk
+from tkinter import filedialog, messagebox, simpledialog
+from tkinter.scrolledtext import ScrolledText
+import os
+
+class MyNotepad:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("刘胖子的记事本")  # 修改程序窗口标题
+        self.filename = None
+        self.text_changed = False
+        self.wrap_mode = tk.NONE
+
+        # 创建文本区域
+        self.text_area = ScrolledText(root, undo=True, wrap=self.wrap_mode)
+        self.text_area.pack(fill=tk.BOTH, expand=1)
+        self.text_area.bind('<<Modified>>', self.on_text_change)
+        self.text_area.bind('<Button-1>', self.update_status_bar)
+        self.text_area.bind('<Key>', self.update_status_bar)
+
+        # 创建菜单
+        self.create_menu()
+
+        # 创建状态栏
+        self.status_bar = tk.Label(root, text="行: 1, 列: 1", anchor='w')
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
+        # 默认编码
+        self.encoding = 'utf-8'
+
+    def create_menu(self):
+        menu_bar = tk.Menu(self.root)
+        self.root.config(menu=menu_bar)
+
+        # 文件菜单
+        file_menu = tk.Menu(menu_bar, tearoff=0)
+        menu_bar.add_cascade(label="文件", menu=file_menu)
+        file_menu.add_command(label="新建", command=self.new_file)
+        file_menu.add_command(label="打开", command=self.open_file)
+        file_menu.add_command(label="保存", command=self.save_file)
+        file_menu.add_command(label="另存为", command=self.save_as)
+        file_menu.add_separator()
+        file_menu.add_command(label="打印", command=self.print_file)
+        file_menu.add_separator()
+        file_menu.add_command(label="退出", command=self.exit_app)
+
+        # 编辑菜单
+        edit_menu = tk.Menu(menu_bar, tearoff=0)
+        menu_bar.add_cascade(label="编辑", menu=edit_menu)
+        edit_menu.add_command(label="撤销", command=self.text_area.edit_undo)
+        edit_menu.add_command(label="重做", command=self.text_area.edit_redo)
+        edit_menu.add_separator()
+        edit_menu.add_command(label="剪切", command=lambda: self.text_area.event_generate("<<Cut>>"))
+        edit_menu.add_command(label="复制", command=lambda: self.text_area.event_generate("<<Copy>>"))
+        edit_menu.add_command(label="粘贴", command=lambda: self.text_area.event_generate("<<Paste>>"))
+        edit_menu.add_separator()
+        edit_menu.add_command(label="查找", command=self.find_text)
+        edit_menu.add_command(label="替换", command=self.replace_text)
+
+        # 格式菜单
+        format_menu = tk.Menu(menu_bar, tearoff=0)
+        menu_bar.add_cascade(label="格式", menu=format_menu)
+        format_menu.add_checkbutton(label="自动换行", command=self.toggle_wrap_mode)
+        format_menu.add_command(label="选择编码", command=self.select_encoding)
+
+        # 查看菜单
+        view_menu = tk.Menu(menu_bar, tearoff=0)
+        menu_bar.add_cascade(label="查看", menu=view_menu)
+        self.show_status_bar = tk.BooleanVar()
+        self.show_status_bar.set(True)
+        view_menu.add_checkbutton(label="状态栏", onvalue=1, offvalue=0, variable=self.show_status_bar, command=self.toggle_status_bar)
+
+        # 帮助菜单
+        help_menu = tk.Menu(menu_bar, tearoff=0)
+        menu_bar.add_cascade(label="帮助", menu=help_menu)
+        help_menu.add_command(label="关于", command=self.show_about)
+
+    def new_file(self):
+        if self.text_changed:
+            self.ask_save_changes()
+        self.text_area.delete(1.0, tk.END)
+        self.filename = None
+        self.root.title("记事本")
+
+    def open_file(self):
+        if self.text_changed:
+            self.ask_save_changes()
+        self.filename = filedialog.askopenfilename(defaultextension=".txt",
+                                                   filetypes=[("文本文件", "*.txt"), ("所有文件", "*.*")])
+        if self.filename:
+            self.text_area.delete(1.0, tk.END)
+            with open(self.filename, "r", encoding=self.encoding) as file:
+                self.text_area.insert(tk.END, file.read())
+            self.root.title(f"记事本 - {os.path.basename(self.filename)}")
+            self.text_changed = False
+
+    def save_file(self):
+        if self.filename:
+            self._save_to_file(self.filename)
+        else:
+            self.save_as()
+
+    def save_as(self):
+        self.filename = filedialog.asksaveasfilename(defaultextension=".txt",
+                                                     filetypes=[("文本文件", "*.txt"), ("所有文件", "*.*")])
+        if self.filename:
+            self._save_to_file(self.filename)
+            self.root.title(f"记事本 - {os.path.basename(self.filename)}")
+            self.text_changed = False
+
+    def _save_to_file(self, filename):
+        try:
+            content = self.text_area.get(1.0, tk.END)
+            with open(filename, "w", encoding=self.encoding) as file:
+                file.write(content)
+            self.text_changed = False
+        except Exception as e:
+            messagebox.showerror("错误", f"保存文件时发生错误: {e}")
+
+    def ask_save_changes(self):
+        response = messagebox.askyesnocancel("保存更改", "文件已修改，是否保存更改？")
+        if response:
+            self.save_file()
+        elif response is None:
+            return
+
+    def exit_app(self):
+        if self.text_changed:
+            self.ask_save_changes()
+        self.root.quit()
+
+    def on_text_change(self, event=None):
+        self.text_changed = self.text_area.edit_modified()
+        self.text_area.edit_modified(False)
+        self.update_status_bar()
+
+    def update_status_bar(self, event=None):
+        if self.show_status_bar.get():
+            line, column = self.text_area.index(tk.INSERT).split('.')
+            self.status_bar.config(text=f"行: {line}, 列: {int(column)+1}")
+
+    def toggle_status_bar(self):
+        if self.show_status_bar.get():
+            self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        else:
+            self.status_bar.pack_forget()
+
+    def find_text(self):
+        find_str = simpledialog.askstring("查找", "请输入要查找的内容：")
+        if find_str:
+            start_pos = '1.0'
+            self.text_area.tag_remove('highlight', '1.0', tk.END)
+            while True:
+                start_pos = self.text_area.search(find_str, start_pos, stopindex=tk.END)
+                if not start_pos:
+                    break
+                end_pos = f"{start_pos}+{len(find_str)}c"
+                self.text_area.tag_add('highlight', start_pos, end_pos)
+                self.text_area.tag_config('highlight', background='yellow')
+                start_pos = end_pos
+
+    def replace_text(self):
+        find_str = simpledialog.askstring("替换", "请输入要查找的内容：")
+        replace_str = simpledialog.askstring("替换", "请输入替换后的内容：")
+        if find_str is not None and replace_str is not None:
+            content = self.text_area.get(1.0, tk.END)
+            new_content = content.replace(find_str, replace_str)
+            self.text_area.delete(1.0, tk.END)
+            self.text_area.insert(1.0, new_content)
+
+    def toggle_wrap_mode(self):
+        if self.wrap_mode == tk.NONE:
+            self.wrap_mode = tk.WORD
+        else:
+            self.wrap_mode = tk.NONE
+        self.text_area.config(wrap=self.wrap_mode)
+
+    def select_encoding(self):
+        encodings = ['utf-8', 'utf-16', 'gbk', 'ansi']
+        encoding = simpledialog.askstring("选择编码", f"请输入编码格式（可选：{', '.join(encodings)}）：", initialvalue=self.encoding)
+        if encoding in encodings:
+            self.encoding = encoding
+        else:
+            messagebox.showwarning("警告", "不支持的编码格式")
+
+    def print_file(self):
+        # 简单地弹出一个消息框，实际的打印功能需要调用操作系统的打印服务
+        messagebox.showinfo("打印", "打印功能尚未实现")
+
+    def show_about(self):
+        messagebox.showinfo("关于", "这是一个使用 Python Tkinter 编写的简易记事本应用程序。")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = MyNotepad(root)
+    root.mainloop()
