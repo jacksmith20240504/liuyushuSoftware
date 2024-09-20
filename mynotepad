@@ -1,34 +1,104 @@
   # 用python写了一个记事本。
 
 import tkinter as tk
-from tkinter import filedialog, messagebox, simpledialog
+from tkinter import filedialog, messagebox, simpledialog, font, ttk, colorchooser
 from tkinter.scrolledtext import ScrolledText
 import os
+import winreg
+import sys
+import time
+from threading import Thread
+import re
 
 class MyNotepad:
     def __init__(self, root):
         self.root = root
-        self.root.title("刘胖子的记事本")  # 修改程序窗口标题
+        self.root.title("刘胖子的记事本 v2.0")  # 修改程序窗口标题
         self.filename = None
         self.text_changed = False
         self.wrap_mode = tk.NONE
+        self.font_size = 12
+        self.font_family = "SimSun"  # 默认使用宋体
+        self.font_color = "black"  # 默认字体颜色
+
+        # 设置窗口的初始大小
+        self.root.geometry("800x600")
+
+        # 创建倒计时框架
+        self.create_countdown_frame()
 
         # 创建文本区域
-        self.text_area = ScrolledText(root, undo=True, wrap=self.wrap_mode)
+        self.text_area = ScrolledText(root, undo=True, wrap=self.wrap_mode, font=(self.font_family, self.font_size))
         self.text_area.pack(fill=tk.BOTH, expand=1)
         self.text_area.bind('<<Modified>>', self.on_text_change)
         self.text_area.bind('<Button-1>', self.update_status_bar)
         self.text_area.bind('<Key>', self.update_status_bar)
 
+        # 增加右侧滑动条长度
+        self.text_area.vbar.config(width=24)  # 增加滑动条宽度，间接增加长度
+
         # 创建菜单
         self.create_menu()
 
         # 创建状态栏
-        self.status_bar = tk.Label(root, text="行: 1, 列: 1", anchor='w')
+        self.status_bar = tk.Label(root, text="行: 1, 列: 1 | 总字数: 0", anchor='w')
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
         # 默认编码
         self.encoding = 'utf-8'
+
+        # 添加到右键菜单
+        self.add_to_context_menu()
+
+        # 绑定快捷键
+        self.root.bind('<Control-bracketleft>', self.increase_font_size)
+        self.root.bind('<Control-bracketright>', self.decrease_font_size)
+
+    def create_countdown_frame(self):
+        self.countdown_frame = tk.Frame(self.root)
+        self.countdown_frame.pack(side=tk.TOP, fill=tk.X)
+
+        # 小时选择器
+        self.hour_var = tk.StringVar(value="0")
+        hour_spinner = ttk.Spinbox(self.countdown_frame, from_=0, to=23, width=3, textvariable=self.hour_var)
+        hour_spinner.pack(side=tk.LEFT)
+        tk.Label(self.countdown_frame, text="时").pack(side=tk.LEFT)
+
+        # 分钟选择器
+        self.minute_var = tk.StringVar(value="0")
+        minute_spinner = ttk.Spinbox(self.countdown_frame, from_=0, to=59, width=3, textvariable=self.minute_var)
+        minute_spinner.pack(side=tk.LEFT)
+        tk.Label(self.countdown_frame, text="分").pack(side=tk.LEFT)
+
+        # 开始按钮
+        start_button = tk.Button(self.countdown_frame, text="开始倒计时", command=self.start_countdown)
+        start_button.pack(side=tk.LEFT, padx=5)
+
+        # 倒计时标签
+        self.countdown_label = tk.Label(self.countdown_frame, text="00:00:00")
+        self.countdown_label.pack(side=tk.LEFT, padx=5)
+
+    def start_countdown(self):
+        hours = int(self.hour_var.get())
+        minutes = int(self.minute_var.get())
+        total_seconds = hours * 3600 + minutes * 60
+
+        def countdown():
+            nonlocal total_seconds
+            while total_seconds > 0:
+                hours, remainder = divmod(total_seconds, 3600)
+                minutes, seconds = divmod(remainder, 60)
+                time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                self.countdown_label.config(text=time_str)
+                time.sleep(1)
+                total_seconds -= 1
+            self.save_and_exit()
+
+        Thread(target=countdown, daemon=True).start()
+
+    def save_and_exit(self):
+        self.save_file()
+        self.root.quit()
 
     def create_menu(self):
         menu_bar = tk.Menu(self.root)
@@ -64,6 +134,9 @@ class MyNotepad:
         menu_bar.add_cascade(label="格式", menu=format_menu)
         format_menu.add_checkbutton(label="自动换行", command=self.toggle_wrap_mode)
         format_menu.add_command(label="选择编码", command=self.select_encoding)
+        format_menu.add_command(label="调整字体大小", command=self.change_font_size)
+        format_menu.add_command(label="选择字体", command=self.show_font_selector)
+        format_menu.add_command(label="字体颜色", command=self.choose_font_color)
 
         # 查看菜单
         view_menu = tk.Menu(menu_bar, tearoff=0)
@@ -139,7 +212,9 @@ class MyNotepad:
     def update_status_bar(self, event=None):
         if self.show_status_bar.get():
             line, column = self.text_area.index(tk.INSERT).split('.')
-            self.status_bar.config(text=f"行: {line}, 列: {int(column)+1}")
+            content = self.text_area.get(1.0, tk.END)
+            total_count = len(content) - 1  # 减去最后的换行符
+            self.status_bar.config(text=f"行: {line}, 列: {int(column)+1} | 总字数: {total_count}")
 
     def toggle_status_bar(self):
         if self.show_status_bar.get():
@@ -191,6 +266,83 @@ class MyNotepad:
 
     def show_about(self):
         messagebox.showinfo("关于", "这是一个使用 Python Tkinter 编写的简易记事本应用程序。")
+
+    def add_to_context_menu(self):
+        try:
+            # 获取当前用户的注册表路径
+            key_path = r"Software\Classes\.mytxtfile"
+            key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path)
+            winreg.SetValue(key, '', winreg.REG_SZ, 'MyTxtFile')
+
+            # 设置在"新建"菜单中显示
+            shell_new_key_path = r"Software\Classes\.mytxtfile\MyTxtFile\ShellNew"
+            shell_new_key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, shell_new_key_path)
+            winreg.SetValueEx(shell_new_key, 'NullFile', 0, winreg.REG_SZ, '')
+
+            # 关联文件扩展名与应用程序
+            app_key_path = r"Software\Classes\MyTxtFile\shell\open\command"
+            app_key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, app_key_path)
+            exe_path = sys.executable.replace('\\', '\\\\')
+            winreg.SetValue(app_key, '', winreg.REG_SZ, f'"{exe_path}" "%1"')
+
+            winreg.CloseKey(key)
+            winreg.CloseKey(shell_new_key)
+            winreg.CloseKey(app_key)
+        except Exception as e:
+            messagebox.showerror("错误", f"添加到右键菜单时发生错误: {e}")
+
+    def change_font_size(self):
+        new_size = simpledialog.askinteger("调整字体大小", "请输入新的字体大小：", initialvalue=self.font_size)
+        if new_size:
+            self.set_font_size(new_size)
+
+    def set_font_size(self, new_size):
+        self.font_size = new_size
+        current_font = font.Font(font=self.text_area['font'])
+        current_font.configure(size=self.font_size)
+        self.text_area.configure(font=current_font)
+        self.update_status_bar()  # 更新状态栏，确保字体放大时不会消失
+        self.root.update_idletasks()  # 强制更新GUI，确保状态栏显示正确
+
+    def increase_font_size(self, event=None):
+        self.set_font_size(self.font_size + 1)
+
+    def decrease_font_size(self, event=None):
+        if self.font_size > 1:
+            self.set_font_size(self.font_size - 1)
+
+    def show_font_selector(self):
+        font_selector = tk.Toplevel(self.root)
+        font_selector.title("选择字体")
+        font_selector.geometry("300x400")
+
+        font_families = ["SimSun", "SimHei", "KaiTi", "FangSong", "Arial", "Times New Roman", "Courier New"]
+        font_listbox = tk.Listbox(font_selector)
+        for family in font_families:
+            font_listbox.insert(tk.END, family)
+        font_listbox.pack(fill=tk.BOTH, expand=True)
+
+        scrollbar = ttk.Scrollbar(font_selector, orient="vertical", command=font_listbox.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        font_listbox.config(yscrollcommand=scrollbar.set)
+
+        def on_select(event):
+            selected_index = font_listbox.curselection()
+            if selected_index:
+                new_family = font_listbox.get(selected_index[0])
+                self.font_family = new_family
+                current_font = font.Font(font=self.text_area['font'])
+                current_font.configure(family=self.font_family)
+                self.text_area.configure(font=current_font)
+                font_selector.destroy()
+
+        font_listbox.bind('<<ListboxSelect>>', on_select)
+
+    def choose_font_color(self):
+        color = colorchooser.askcolor(title="选择字体颜色")
+        if color[1]:
+            self.font_color = color[1]
+            self.text_area.config(fg=self.font_color)
 
 if __name__ == "__main__":
     root = tk.Tk()
