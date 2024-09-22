@@ -109,12 +109,18 @@ class MyNotepad:
                 start, end = match.span()
                 self.text_area.tag_add("link", f"1.0+{start}c", f"1.0+{end}c")
 
+            # 自动更新预览
+            self.update_markdown_preview()
+
     def toggle_markdown_mode(self):
         self.markdown_mode = not self.markdown_mode
         if self.markdown_mode:
             messagebox.showinfo("Markdown模式", "已切换到Markdown模式")
+            self.preview_markdown()  # 自动显示预览
         else:
             messagebox.showinfo("普通模式", "已切换到普通模式")
+            self.preview_area.pack_forget()  # 隐藏预览区域
+            self.text_area.pack(fill=tk.BOTH, expand=1)  # 恢复文本区域大小
         self.update_markdown_syntax()
 
     def preview_markdown(self):
@@ -127,20 +133,34 @@ class MyNotepad:
         self.preview_area.pack(side=tk.RIGHT, fill=tk.BOTH, expand=1)
         self.text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
 
+    def update_markdown_preview(self):
+        if self.markdown_mode:
+            content = self.text_area.get("1.0", tk.END)
+            html = markdown.markdown(content)
+            self.preview_area.set_html(html)
+            if not self.preview_area.winfo_ismapped():
+                self.preview_area.pack(side=tk.RIGHT, fill=tk.BOTH, expand=1)
+                self.text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
+
     def insert_markdown_header(self):
         self.text_area.insert(tk.INSERT, "# ")
+        self.update_markdown_syntax()
 
     def insert_markdown_bold(self):
         self.text_area.insert(tk.INSERT, "**粗体文本**")
+        self.update_markdown_syntax()
 
     def insert_markdown_italic(self):
         self.text_area.insert(tk.INSERT, "*斜体文本*")
+        self.update_markdown_syntax()
 
     def insert_markdown_code(self):
         self.text_area.insert(tk.INSERT, "`代码`")
+        self.update_markdown_syntax()
 
     def insert_markdown_link(self):
         self.text_area.insert(tk.INSERT, "[链接文本](https://example.com)")
+        self.update_markdown_syntax()
 
     def create_countdown_frame(self):
         self.countdown_frame = tk.Frame(self.root)
@@ -241,7 +261,6 @@ class MyNotepad:
         markdown_menu = tk.Menu(menu_bar, tearoff=0)
         menu_bar.add_cascade(label="Markdown", menu=markdown_menu)
         markdown_menu.add_command(label="切换Markdown模式", command=self.toggle_markdown_mode)
-        markdown_menu.add_command(label="预览Markdown", command=self.preview_markdown)
         markdown_menu.add_command(label="插入标题", command=self.insert_markdown_header)
         markdown_menu.add_command(label="插入粗体", command=self.insert_markdown_bold)
         markdown_menu.add_command(label="插入斜体", command=self.insert_markdown_italic)
@@ -306,6 +325,8 @@ class MyNotepad:
         self.text_changed = self.text_area.edit_modified()
         self.text_area.edit_modified(False)
         self.update_status_bar()
+        if self.markdown_mode:
+            self.update_markdown_preview()
 
     def update_status_bar(self, event=None):
         if self.show_status_bar.get():
