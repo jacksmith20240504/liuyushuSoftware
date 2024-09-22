@@ -1,5 +1,3 @@
-  # 用python写了一个记事本。
-
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, font, ttk, colorchooser
 from tkinter.scrolledtext import ScrolledText
@@ -9,6 +7,9 @@ import sys
 import time
 from threading import Thread
 import re
+import markdown
+from tkhtmlview import HTMLLabel
+
 
 class MyNotepad:
     def __init__(self, root):
@@ -20,6 +21,7 @@ class MyNotepad:
         self.font_size = 12
         self.font_family = "SimSun"  # 默认使用宋体
         self.font_color = "black"  # 默认字体颜色
+        self.markdown_mode = False  # 添加Markdown模式标志
 
         # 设置窗口的初始大小
         self.root.geometry("800x600")
@@ -33,6 +35,11 @@ class MyNotepad:
         self.text_area.bind('<<Modified>>', self.on_text_change)
         self.text_area.bind('<Button-1>', self.update_status_bar)
         self.text_area.bind('<Key>', self.update_status_bar)
+
+        # 创建HTML预览区域
+        self.preview_area = HTMLLabel(root, html="")
+        self.preview_area.pack(fill=tk.BOTH, expand=1)
+        self.preview_area.pack_forget()  # 初始时隐藏预览区域
 
         # 增加右侧滑动条长度
         self.text_area.vbar.config(width=24)  # 增加滑动条宽度，间接增加长度
@@ -53,6 +60,87 @@ class MyNotepad:
         # 绑定快捷键
         self.root.bind('<Control-bracketleft>', self.increase_font_size)
         self.root.bind('<Control-bracketright>', self.decrease_font_size)
+
+        # 设置Markdown支持
+        self.setup_markdown_support()
+
+    def setup_markdown_support(self):
+        # 添加Markdown语法高亮
+        self.text_area.tag_configure("header", foreground="blue", font=(self.font_family, self.font_size, "bold"))
+        self.text_area.tag_configure("bold", font=(self.font_family, self.font_size, "bold"))
+        self.text_area.tag_configure("italic", font=(self.font_family, self.font_size, "italic"))
+        self.text_area.tag_configure("code", foreground="green")
+        self.text_area.tag_configure("link", foreground="blue", underline=1)
+
+        # 绑定按键事件以实时更新Markdown语法高亮
+        self.text_area.bind('<KeyRelease>', self.update_markdown_syntax)
+
+    def update_markdown_syntax(self, event=None):
+        if self.markdown_mode:
+            content = self.text_area.get("1.0", tk.END)
+            self.text_area.tag_remove("header", "1.0", tk.END)
+            self.text_area.tag_remove("bold", "1.0", tk.END)
+            self.text_area.tag_remove("italic", "1.0", tk.END)
+            self.text_area.tag_remove("code", "1.0", tk.END)
+            self.text_area.tag_remove("link", "1.0", tk.END)
+
+            # 高亮标题
+            for match in re.finditer(r'^#+\s.*$', content, re.MULTILINE):
+                start, end = match.span()
+                self.text_area.tag_add("header", f"1.0+{start}c", f"1.0+{end}c")
+
+            # 高亮粗体
+            for match in re.finditer(r'\*\*.*?\*\*', content):
+                start, end = match.span()
+                self.text_area.tag_add("bold", f"1.0+{start}c", f"1.0+{end}c")
+
+            # 高亮斜体
+            for match in re.finditer(r'\*.*?\*', content):
+                start, end = match.span()
+                self.text_area.tag_add("italic", f"1.0+{start}c", f"1.0+{end}c")
+
+            # 高亮代码
+            for match in re.finditer(r'`.*?`', content):
+                start, end = match.span()
+                self.text_area.tag_add("code", f"1.0+{start}c", f"1.0+{end}c")
+
+            # 高亮链接
+            for match in re.finditer(r'\[.*?\]\(.*?\)', content):
+                start, end = match.span()
+                self.text_area.tag_add("link", f"1.0+{start}c", f"1.0+{end}c")
+
+    def toggle_markdown_mode(self):
+        self.markdown_mode = not self.markdown_mode
+        if self.markdown_mode:
+            messagebox.showinfo("Markdown模式", "已切换到Markdown模式")
+        else:
+            messagebox.showinfo("普通模式", "已切换到普通模式")
+        self.update_markdown_syntax()
+
+    def preview_markdown(self):
+        if not self.markdown_mode:
+            messagebox.showwarning("警告", "请先切换到Markdown模式")
+            return
+        content = self.text_area.get("1.0", tk.END)
+        html = markdown.markdown(content)
+        self.preview_area.set_html(html)
+        self.preview_area.pack(side=tk.RIGHT, fill=tk.BOTH, expand=1)
+        self.text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
+
+    def insert_markdown_header(self):
+        self.text_area.insert(tk.INSERT, "# ")
+
+    def insert_markdown_bold(self):
+        self.text_area.insert(tk.INSERT, "**粗体文本**")
+
+    def insert_markdown_italic(self):
+        self.text_area.insert(tk.INSERT, "*斜体文本*")
+
+    def insert_markdown_code(self):
+        self.text_area.insert(tk.INSERT, "`代码`")
+
+    def insert_markdown_link(self):
+        self.text_area.insert(tk.INSERT, "[链接文本](https://example.com)")
 
     def create_countdown_frame(self):
         self.countdown_frame = tk.Frame(self.root)
@@ -149,6 +237,16 @@ class MyNotepad:
         help_menu = tk.Menu(menu_bar, tearoff=0)
         menu_bar.add_cascade(label="帮助", menu=help_menu)
         help_menu.add_command(label="关于", command=self.show_about)
+
+        markdown_menu = tk.Menu(menu_bar, tearoff=0)
+        menu_bar.add_cascade(label="Markdown", menu=markdown_menu)
+        markdown_menu.add_command(label="切换Markdown模式", command=self.toggle_markdown_mode)
+        markdown_menu.add_command(label="预览Markdown", command=self.preview_markdown)
+        markdown_menu.add_command(label="插入标题", command=self.insert_markdown_header)
+        markdown_menu.add_command(label="插入粗体", command=self.insert_markdown_bold)
+        markdown_menu.add_command(label="插入斜体", command=self.insert_markdown_italic)
+        markdown_menu.add_command(label="插入代码", command=self.insert_markdown_code)
+        markdown_menu.add_command(label="插入链接", command=self.insert_markdown_link)
 
     def new_file(self):
         if self.text_changed:
