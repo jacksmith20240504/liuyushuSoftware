@@ -9,7 +9,13 @@ from threading import Thread
 import re
 import markdown
 from tkhtmlview import HTMLLabel
+import jieba
+import pypinyin
 
+# Example usage of pypinyin
+text = "你好"
+pinyin = pypinyin.pinyin(text, style=pypinyin.NORMAL)
+print(pinyin)
 
 class MyNotepad:
     def __init__(self, root):
@@ -64,6 +70,76 @@ class MyNotepad:
         # 设置Markdown支持
         self.setup_markdown_support()
 
+        # 加载错别字词典
+        self.load_typo_dict()
+
+    def load_typo_dict(self):
+        # 加载一个更全面的错别字词典
+        self.typo_dict = {
+            "的": "得地",
+            "得": "的地",
+            "地": "的得",
+            "哪": "那",
+            "那": "哪",
+            "它": "他她",
+            "他": "它她",
+            "她": "它他",
+            "在": "再",
+            "再": "在",
+            "与": "于",
+            "于": "与",
+            "或": "或者",
+            "而": "二",
+            "二": "而",
+            "以": "已",
+            "已": "以",
+            "吗": "嘛",
+            "嘛": "吗",
+            "却": "确",
+            "确": "却",
+            "象": "像",
+            "像": "象",
+            "此": "次",
+            "次": "此",
+            "话": "划",
+            "划": "话",
+            "系": "系统",
+            "统": "统一",
+            "性": "型",
+            "型": "性",
+            "才": "材",
+            "材": "才",
+            "华": "花",
+            "花": "华",
+            "发": "发展",
+            "展": "展开",
+            "处": "处理",
+            "理": "理解",
+        }
+
+    def check_typos(self):
+        content = self.text_area.get("1.0", tk.END)
+        words = jieba.lcut(content)
+        
+        self.text_area.tag_remove("typo", "1.0", tk.END)
+        
+        typos_found = []
+        start = "1.0"
+        for word in words:
+            if word in self.typo_dict:
+                end = self.text_area.search(word, start, stopindex=tk.END)
+                if end:
+                    self.text_area.tag_add("typo", end, f"{end}+{len(word)}c")
+                    start = f"{end}+{len(word)}c"
+                    typos_found.append(f"'{word}' 可能是 '{self.typo_dict[word]}' 的错别字")
+        
+        self.text_area.tag_config("typo", background="yellow", foreground="red")
+
+        if typos_found:
+            messagebox.showinfo("发现错别字", "发现如下地方可能有错别字：\n" + "\n".join(typos_found))
+        else:
+            messagebox.showinfo("检查完成", "没有发现明显的错别字。")
+
     def setup_markdown_support(self):
         # 添加Markdown语法高亮
         self.text_area.tag_configure("header", foreground="blue", font=(self.font_family, self.font_size, "bold"))
@@ -71,6 +147,7 @@ class MyNotepad:
         self.text_area.tag_configure("italic", font=(self.font_family, self.font_size, "italic"))
         self.text_area.tag_configure("code", foreground="green")
         self.text_area.tag_configure("link", foreground="blue", underline=1)
+        self.text_area.tag_configure("typo", background="yellow", foreground="red")  # 修改错别字标记样式
 
         # 绑定按键事件以实时更新Markdown语法高亮
         self.text_area.bind('<KeyRelease>', self.update_markdown_syntax)
@@ -258,6 +335,7 @@ class MyNotepad:
         menu_bar.add_cascade(label="帮助", menu=help_menu)
         help_menu.add_command(label="关于", command=self.show_about)
 
+        # Markdown菜单
         markdown_menu = tk.Menu(menu_bar, tearoff=0)
         menu_bar.add_cascade(label="Markdown", menu=markdown_menu)
         markdown_menu.add_command(label="切换Markdown模式", command=self.toggle_markdown_mode)
@@ -266,6 +344,9 @@ class MyNotepad:
         markdown_menu.add_command(label="插入斜体", command=self.insert_markdown_italic)
         markdown_menu.add_command(label="插入代码", command=self.insert_markdown_code)
         markdown_menu.add_command(label="插入链接", command=self.insert_markdown_link)
+
+        # 检查错别字菜单
+        menu_bar.add_command(label="检查错别字", command=self.check_typos)
 
     def new_file(self):
         if self.text_changed:
