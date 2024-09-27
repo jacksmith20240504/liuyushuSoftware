@@ -1,0 +1,88 @@
+import android.app.Activity;
+import android.content.Context;
+import android.media.AudioFormat;
+import android.media.AudioRecord;
+import android.media.MediaRecorder;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.widget.Toast;
+
+public class MainActivity extends Activity {
+    private static final int SAMPLE_RATE = 44100;
+    private static final int CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO;
+    private static final int AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT;
+    private static final int BUFFER_SIZE = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT);
+    private static final double THRESHOLD = 30.0; // 分贝阈值
+
+    private AudioRecord audioRecord;
+    private boolean isRecording = false;
+    private Thread recordingThread;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        startAudioMonitoring();
+    }
+
+    private void startAudioMonitoring() {
+        audioRecord = new AudioRecord(MediaRecorder.AudioSource.MIC, SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT, BUFFER_SIZE);
+        isRecording = true;
+
+        recordingThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                short[] audioBuffer = new short[BUFFER_SIZE];
+                audioRecord.startRecording();
+
+                while (isRecording) {
+                    int readSize = audioRecord.read(audioBuffer, 0, BUFFER_SIZE);
+                    if (readSize > 0) {
+                        double dbLevel = calculateDb(audioBuffer, readSize);
+                        if (dbLevel > THRESHOLD) {
+                            showWarning();
+                        }
+                    }
+                }
+
+                audioRecord.stop();
+                audioRecord.release();
+            }
+        });
+        recordingThread.start();
+    }
+
+    private double calculateDb(short[] audioBuffer, int readSize) {
+        double sum = 0;
+        for (int i = 0; i < readSize; i++) {
+            sum += audioBuffer[i] * audioBuffer[i];
+        }
+        double rms = Math.sqrt(sum / readSize);
+        return 20 * Math.log10(rms);
+    }
+
+    private void showWarning() {
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+                Toast.makeText(MainActivity.this, "警告：你吼人了！", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        isRecording = false;
+        if (recordingThread != null) {
+            recordingThread.interrupt();
+            try {
+                recordingThread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+}
