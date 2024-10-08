@@ -1,0 +1,179 @@
+import pygame  # 导入pygame库，用于游戏开发
+import random  # 导入random库，用于生成随机数
+import math  # 导入math库，用于数学计算
+from pygame import mixer  # 从pygame导入mixer模块，用于处理音频
+
+# 初始化pygame
+pygame.init()
+
+# 创建游戏窗口
+screen = pygame.display.set_mode((800, 600))  # 设置窗口大小为800x600像素
+
+# 设置游戏标题和图标
+pygame.display.set_caption("Space Invaders")  # 设置游戏标题
+icon = pygame.image.load('ufo.png')  # 加载图标图像
+pygame.display.set_icon(icon)  # 设置游戏图标
+background = pygame.image.load("Background.jpg")  # 加载背景图像
+
+# 设置背景音乐
+mixer.music.load("background_music.mp3")  # 加载背景音乐
+#mixer.music.set_volume(0.5)  # 设置音量（当前被注释掉）
+mixer.music.play(-1)  # 循环播放背景音乐
+
+# 玩家相关变量
+img_player = pygame.image.load("Rocket.png")  # 加载玩家飞船图像
+player_X = 370  # 玩家初始X坐标
+player_Y = 480  # 玩家初始Y坐标
+player_X_change = 0  # 玩家X方向移动速度
+# player_Y_change = 50  # 玩家Y方向移动速度（当前未使用）
+
+# 敌人相关变量
+enemy_img = []  # 敌人图像列表
+enemy_X = []  # 敌人X坐标列表
+enemy_Y = []  # 敌人Y坐标列表
+enemy_X_change = []  # 敌人X方向移动速度列表
+enemy_Y_change = []  # 敌人Y方向移动速度列表
+num_of_enemies = 8  # 敌人数量，从4增加到8
+
+# 初始化敌人
+for i in range(num_of_enemies):
+    enemy_img.append(pygame.image.load('enemy.png'))  # 加载敌人图像
+    enemy_X.append(random.randint(0, 735))  # 随机生成敌人的X坐标
+    enemy_Y.append(random.randint(50, 150))  # 随机生成敌人的Y坐标
+    enemy_X_change.append(0.3)  # 设置敌人的水平移动速度
+    enemy_Y_change.append(5)  # 设置敌人的垂直移动速度
+
+# 子弹相关变量
+bullet_enemy = pygame.image.load("bullet.png")  # 加载子弹图像
+bullet_X = 0  # 子弹初始X坐标
+bullet_Y = 480  # 子弹初始Y坐标
+bullet_X_change = 0  # 子弹X方向移动速度（当前未使用）
+bullet_Y_change = 3  # 子弹Y方向移动速度
+#bullet_visible = False  # 子弹是否可见（当前未使用）
+bullet_state = "ready"  # 子弹状态，"ready"表示准备发射，"fire"表示已发射
+
+# 分数相关变量
+score_value = 0  # 初始化分数
+my_font = pygame.font.Font('freesansbold.ttf', 36)  # 设置字体和大小
+text_x = 10  # 分数显示的X坐标
+text_y = 10  # 分数显示的Y坐标
+
+# 游戏结束文本
+end_font = pygame.font.Font('freesansbold.ttf', 64)  # 设置游戏结束文本的字体和大小
+
+def final_text():
+    """显示游戏结束文本"""
+    my_final_font = end_font.render("GAME OVER", True, (255, 255, 255))
+    screen.blit(my_final_font, (200, 250))
+
+def show_score(x, y):
+    """显示当前分数"""
+    score = my_font.render("Score : " + str(score_value), True, (255, 255, 255))
+    screen.blit(score, (x, y))
+
+def player():
+    """在屏幕上绘制玩家飞船"""
+    screen.blit(img_player, (player_X, player_Y))
+
+def enemy(x, y, en):
+    """在屏幕上绘制敌人"""
+    screen.blit(enemy_img[en], (x, y))
+
+def shoot_bullet(x, y):
+    """发射子弹"""
+    global bullet_state
+    bullet_state = "fire"
+    screen.blit(bullet_enemy, (x + 16, y + 10))
+
+def is_collision(enemy_X, enemy_Y, bullet_X, bullet_Y):
+    """检测子弹和敌人之间的碰撞"""
+    distance = math.sqrt((math.pow(enemy_X - bullet_X, 2)) + (math.pow(enemy_Y - bullet_Y, 2)))
+    return distance < 27
+
+# 游戏主循环
+is_running = True
+game_over = False
+while is_running:
+    # 绘制背景
+    screen.blit(background, (0, 0))
+
+    # 事件处理
+    for event in pygame.event.get():
+        # 处理退出事件
+        if event.type == pygame.QUIT:
+            is_running = False
+        # 处理按键事件
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_LEFT:
+                player_X_change -= 0.3  # 向左移动
+            if event.key == pygame.K_RIGHT:
+                player_X_change += 0.3  # 向右移动
+            if event.key == pygame.K_SPACE and not game_over:
+                mixer.Sound("shot.mp3").play()  # 播放射击音效
+                if bullet_state == "ready":
+                    bullet_X = player_X
+                    shoot_bullet(player_X, bullet_Y)  # 发射子弹
+        # 处理松开按键事件
+        if event.type == pygame.KEYUP:
+            if event.key == pygame.K_LEFT or event.key == pygame.K_RIGHT:
+                player_X_change = 0  # 停止移动
+
+    if not game_over:
+        # 更新玩家位置
+        player_X += player_X_change
+
+        # 确保玩家不会移出屏幕
+        if player_X <= 0:
+            player_X = 0
+        elif player_X >= 736:
+            player_X = 736
+
+        # 更新敌人位置和处理碰撞
+        for i in range(num_of_enemies):
+            # 检查游戏是否结束
+            if enemy_Y[i] > 440 or score_value >= 10:
+                for j in range(num_of_enemies):
+                    enemy_Y[j] = 2000  # 将所有敌人移出屏幕
+                game_over = True
+                break
+
+            # 处理敌人移动和边界碰撞
+            if enemy_X[i] <= 0:
+                enemy_X[i] = 0
+                enemy_X_change[i] = abs(enemy_X_change[i])
+                enemy_Y[i] += enemy_Y_change[i]  # 向下移动
+            elif enemy_X[i] >= 736:
+                enemy_X[i] = 736
+                enemy_X_change[i] = -abs(enemy_X_change[i])
+                enemy_Y[i] += enemy_Y_change[i]  # 向下移动
+            enemy_X[i] += enemy_X_change[i]
+
+            # 检测子弹和敌人的碰撞
+            collision = is_collision(enemy_X[i], enemy_Y[i], bullet_X, bullet_Y)
+            if collision:
+                mixer.Sound("punch.mp3").play()  # 播放碰撞音效
+                bullet_Y = 480
+                bullet_state = "ready"
+                score_value += 1  # 增加分数
+                enemy_X[i] = random.randint(0, 736)  # 重新设置敌人位置
+                enemy_Y[i] = random.randint(50, 200)
+    
+            enemy(enemy_X[i], enemy_Y[i], i)  # 绘制敌人
+
+        # 处理子弹移动
+        if bullet_state == "fire":
+            shoot_bullet(bullet_X, bullet_Y)
+            bullet_Y -= bullet_Y_change
+            if bullet_Y <= 0:
+                bullet_Y = 480
+                bullet_state = "ready"
+
+        player()  # 绘制玩家
+
+    if game_over:
+        final_text()  # 显示游戏结束文本
+
+    show_score(text_x, text_y)  # 显示分数
+
+    # 更新屏幕显示
+    pygame.display.update()
